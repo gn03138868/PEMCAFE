@@ -183,7 +183,8 @@ def run_model_until_convergence(params, tolerance=1e-6, max_iterations=100):
         # Check for convergence if this is not the first iteration
         if prev_results is not None:
             # Calculate RMSE between the current and previous iteration for NEP
-            rmse = np.sqrt(np.mean((current_results['NEP'] - prev_results['NEP'])**2))
+            #rmse = np.sqrt(np.mean((current_results['NEP'] - prev_results['NEP'])**2))
+            rmse = np.sqrt(np.mean((results['NEP_from_dTEC'] - results['NEP'])**2))
 
             if rmse < tolerance:
                 converged = True
