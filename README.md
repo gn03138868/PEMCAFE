@@ -69,27 +69,61 @@ python -c "import pandas; import numpy; import scipy; print('All packages instal
 
 ## Data Preparation
 
-### Input File Requirements
-Create a CSV file with the following columns:
+### Input File Format (inputdataforPEMCAFE.csv)
+Your input CSV file should contain the following columns:
 
 | Column Name | Description | Units | Example Value |
 |------------|-------------|--------|---------------|
-| Foliages | Leaf biomass | Mg C ha⁻¹ | 2.5 |
-| Branches | Branch biomass | Mg C ha⁻¹ | 3.2 |
-| Culms | Culm biomass | Mg C ha⁻¹ | 15.6 |
-| Stumps | Stump biomass | Mg C ha⁻¹ | 1.8 |
-| Rhizomes | Rhizome biomass | Mg C ha⁻¹ | 8.4 |
-| Roots | Root biomass | Mg C ha⁻¹ | 4.2 |
-| AvgTemp | Average temperature | °C | 25.3 |
-| Undergrowth | Undergrowth biomass | Mg C ha⁻¹ | 0.5 |
-| Litter_layer | Litter layer mass | Mg C ha⁻¹ | 1.2 |
-| SC | Soil carbon | Mg C ha⁻¹ | 45.6 |
+| t | Time step | years | 0, 1, 2... |
+| AvgTemp | Average temperature | °C | 18.6 |
+| Foliages | Leaf biomass | Mg C ha⁻¹ | 2.78 |
+| Branches | Branch biomass | Mg C ha⁻¹ | 5.03 |
+| Culms | Culm biomass | Mg C ha⁻¹ | 28.59 |
+| AGC | Above-ground carbon | Mg C ha⁻¹ | 36.4 |
+| Root_Shoot_Ratio | Root to shoot ratio | ratio | 0.925549451 |
+| Roots | Root biomass | Mg C ha⁻¹ | 6.48 |
+| Rhizomes | Rhizome biomass | Mg C ha⁻¹ | 17.175153 |
+| Stumps | Stump biomass | Mg C ha⁻¹ | 10.034847 |
+| BGC | Below-ground carbon | Mg C ha⁻¹ | 33.69 |
+| TC | Total carbon | Mg C ha⁻¹ | 70.09 |
+| Litter_layer | Litter layer mass | Mg C ha⁻¹ | 1.35756 |
+| SC | Soil carbon | Mg C ha⁻¹ | 70.25 |
+| Undergrowth | Undergrowth biomass | Mg C ha⁻¹ | 0 |
+| TEC | Total ecosystem carbon | Mg C ha⁻¹ | 141.69756 |
 
-### Sample CSV Format
+### Sample Input Data
 ```csv
-Foliages,Branches,Culms,Stumps,Rhizomes,Roots,AvgTemp,Undergrowth,Litter_layer,SC
-2.5,3.2,15.6,1.8,8.4,4.2,25.3,0.5,1.2,45.6
+t,AvgTemp,Foliages,Branches,Culms,AGC,Root_Shoot_Ratio,Roots,Rhizomes,Stumps,BGC,TC,Litter_layer,SC,Undergrowth,TEC
+0,18.6,2.78,5.03,28.59,36.4,0.925549451,6.48,17.175153,10.034847,33.69,70.09,1.35756,70.25,0,141.69756
+1,18.6,2.99,5.38,31.32,39.69,,,,,,,,,0,
+2,18.6,3.13,5.65,33.26,42.04,,,,,,,,,0,
 ```
+
+### Important Notes
+1. **Required Initial Values**: For the first time step (t = 0), you must provide all values
+2. **Subsequent Time Steps**: Only these columns are required:
+   - t
+   - AvgTemp
+   - Foliages
+   - Branches
+   - Culms
+   - Undergrowth
+3. **Data Format**:
+   - Use comma (,) as the delimiter
+   - Decimal numbers should use point (.) not comma
+   - Missing values can be left empty
+   - No spaces after commas
+4. **Units**: All biomass and carbon values should be in Mg C ha⁻¹ (Mega grams of carbon per hectare)
+
+### Output Columns
+The model will calculate and output all other columns including:
+- NPP metrics (LNP, BNP, CNP)
+- Decomposition rates (LD, BD, CD)
+- Carbon fluxes (Litterfall, ANPP, BNPP, TNPP)
+- Respiration values (SR, HR)
+- Autotrophic respiration (AR) components
+- Net ecosystem production (NEP)
+
 
 ## Model Configuration
 
