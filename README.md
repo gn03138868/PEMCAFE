@@ -1,92 +1,179 @@
 # PEMCAFE (Process-based Ecosystem Model for Carbon Assessment in Forest Ecosystems)
 
-## English Version
+## Overview
+PEMCAFE (version 0.9, released October 10, 2024) is a process-based ecosystem model designed for carbon assessment in forest ecosystems, with a specific focus on bamboo forests. This model implements comprehensive carbon cycle calculations and provides various ecosystem productivity metrics.
 
-### Overview
-PEMCAFE (version 0.9, released October 10, 2024) is a process-based ecosystem model designed for carbon assessment in forest ecosystems. The model calculates various carbon-related metrics including:
-
-- Above-ground Net Primary Production (ANPP)
-- Below-ground Net Primary Production (BNPP)
-- Total Net Primary Production (TNPP)
-- Net Ecosystem Production (NEP)
-- Gross Primary Production (GPP)
-
-### Key Features
+## Key Features
 - Comprehensive carbon pool calculations
+- Above-ground and below-ground carbon flux estimation
 - Two methods for BNPP estimation
 - Automated parameter optimization
 - Iterative convergence mechanism
 - Optional harvested bamboo products consideration
 
-### Requirements
-- Python 3.x
-- Required packages: pandas, numpy, scipy
-- Input CSV file with forest measurement data
+## Model Outputs
+- Above-ground Net Primary Production (ANPP)
+- Below-ground Net Primary Production (BNPP)
+- Total Net Primary Production (TNPP)
+- Net Ecosystem Production (NEP)
+- Gross Primary Production (GPP)
+- Various carbon pool measurements
 
-### Usage
-1. Prepare your input data in CSV format
-2. Set the appropriate parameters in the configuration section
-3. Choose BNPP calculation method (BNG + Dbelow or BNG + Soil_AR)
-4. Run the script to obtain optimized results
+## System Requirements
+### Hardware Requirements
+- Minimum 4GB RAM (8GB recommended)
+- 1GB free disk space
+- Any modern CPU (2GHz or faster recommended)
+
+### Software Requirements
+- Python 3.7 or 3.8
+- Operating System: Windows 10/11, macOS 10.14+, or Linux
+- Required Python packages:
+  - pandas
+  - numpy
+  - scipy
+
+## Complete Installation Guide
+
+### 1. Python Installation
+1. Download Python 3.7 or 3.8:
+   - Windows: Visit [python.org](https://www.python.org/downloads/)
+   - macOS: Use Homebrew: `brew install python@3.8`
+   - Linux: `sudo apt-get install python3.8` (Ubuntu/Debian)
+
+2. Verify installation:
+   ```bash
+   python --version
+   ```
+
+### 2. Virtual Environment Setup
+```bash
+# Windows
+python -m venv pemcafe-env
+pemcafe-env\Scripts\activate
+
+# macOS/Linux
+python3 -m venv pemcafe-env
+source pemcafe-env/bin/activate
+```
+
+### 3. Package Installation
+```bash
+pip install pandas numpy scipy
+```
+
+Verify installation:
+```bash
+python -c "import pandas; import numpy; import scipy; print('All packages installed successfully')"
+```
+
+## Data Preparation
+
+### Input File Requirements
+Create a CSV file with the following columns:
+
+| Column Name | Description | Units | Example Value |
+|------------|-------------|--------|---------------|
+| Foliages | Leaf biomass | Mg C ha⁻¹ | 2.5 |
+| Branches | Branch biomass | Mg C ha⁻¹ | 3.2 |
+| Culms | Culm biomass | Mg C ha⁻¹ | 15.6 |
+| Stumps | Stump biomass | Mg C ha⁻¹ | 1.8 |
+| Rhizomes | Rhizome biomass | Mg C ha⁻¹ | 8.4 |
+| Roots | Root biomass | Mg C ha⁻¹ | 4.2 |
+| AvgTemp | Average temperature | °C | 25.3 |
+| Undergrowth | Undergrowth biomass | Mg C ha⁻¹ | 0.5 |
+| Litter_layer | Litter layer mass | Mg C ha⁻¹ | 1.2 |
+| SC | Soil carbon | Mg C ha⁻¹ | 45.6 |
+
+### Sample CSV Format
+```csv
+Foliages,Branches,Culms,Stumps,Rhizomes,Roots,AvgTemp,Undergrowth,Litter_layer,SC
+2.5,3.2,15.6,1.8,8.4,4.2,25.3,0.5,1.2,45.6
+```
+
+## Model Configuration
+
+### 1. File Setup
+1. Create a working directory:
+   ```bash
+   mkdir pemcafe_project
+   cd pemcafe_project
+   ```
+
+2. Copy PEMCAFE.py and your input CSV to this directory
+
+### 2. Code Configuration
+Open PEMCAFE.py and modify these parameters:
+
+```python
+# File paths
+input_path = "path/to/your/inputdataforPEMCAFE.csv"
+output_path = "path/to/your/optimised_outputresultsforPEMCAFE.csv"
+
+# Model parameters
+HBP = 0  # Set to 1 if harvesting bamboo products
+BNPPmethod = 1  # 1 for BNG + Dbelow, 0 for BNG + Soil_AR
+
+# Optimization parameters
+tolerance = 1e-6
+max_iterations = 100
+```
+
+## Running the Model
+
+### 1. Basic Execution
+```bash
+# Navigate to project directory
+cd path/to/pemcafe_project
+
+# Activate virtual environment
+source pemcafe-env/bin/activate  # or pemcafe-env\Scripts\activate on Windows
+
+# Run the model
+python PEMCAFE.py
+```
+
+### 2. Monitor Progress
+The model will display:
+- Optimization progress
+- Iteration count
+- RMSE values
+- Final parameter values
+
+### 3. Check Results
+Output will be saved to the specified CSV file with calculated values for:
+- All NPP metrics
+- Carbon pool sizes
+- Flux rates
+- Error estimates
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+1. ImportError:
+   ```bash
+   pip install --upgrade pandas numpy scipy
+   ```
+
+2. File not found error:
+   - Check file paths
+   - Ensure using correct path separators (/ or \)
+
+3. Memory errors:
+   - Close other applications
+   - Reduce input data size
+   - Increase system swap space
+
+4. Convergence issues:
+   - Increase max_iterations
+   - Adjust tolerance value
+   - Check input data quality
+
+## Support and Contact
+For technical support or questions:
+1. Check documentation
+2. Review error messages
+3. Contact your system administrator
 
 ---
-
-## 繁體中文版本
-
-### 概述
-PEMCAFE（版本0.9，2024年10月10日發布）是一個針對森林生態系統進行碳評估的過程型生態系統模型。該模型計算多項碳相關指標，包括：
-
-- 地上部淨初級生產力（ANPP）
-- 地下部淨初級生產力（BNPP）
-- 總淨初級生產力（TNPP）
-- 淨生態系統生產力（NEP）
-- 總初級生產力（GPP）
-
-### 主要特點
-- 全面的碳庫計算
-- 兩種BNPP估算方法
-- 自動參數優化
-- 迭代收斂機制
-- 可選擇性考慮竹產品收穫
-
-### 系統需求
-- Python 3.x
-- 必要套件：pandas, numpy, scipy
-- 含森林測量數據的CSV輸入檔案
-
-### 使用方法
-1. 準備CSV格式的輸入數據
-2. 在配置區段設定適當參數
-3. 選擇BNPP計算方法（BNG + Dbelow 或 BNG + Soil_AR）
-4. 執行腳本以獲得優化結果
-
----
-
-## 日本語版
-
-### 概要
-PEMCAFE（バージョン0.9、2024年10月10日リリース）は、森林生態系における炭素評価のためのプロセスベースの生態系モデルです。このモデルは以下の炭素関連指標を計算します：
-
-- 地上部純一次生産量（ANPP）
-- 地下部純一次生産量（BNPP）
-- 総純一次生産量（TNPP）
-- 生態系純生産量（NEP）
-- 総一次生産量（GPP）
-
-### 主な特徴
-- 包括的な炭素プール計算
-- 2種類のBNPP推定方法
-- パラメータの自動最適化
-- 反復収束メカニズム
-- 竹製品収穫の選択的考慮
-
-### 必要条件
-- Python 3.x
-- 必要なパッケージ：pandas, numpy, scipy
-- 森林測定データを含むCSV入力ファイル
-
-### 使用方法
-1. CSV形式で入力データを準備
-2. 設定セクションで適切なパラメータを設定
-3. BNPP計算方法を選択（BNG + Dbelow または BNG + Soil_AR）
-4. スクリプトを実行して最適化された結果を取得
