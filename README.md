@@ -134,10 +134,10 @@ The model will calculate and output all other columns including:
    cd pemcafe_project
    ```
 
-2. Copy PEMCAFE.py and your input CSV to this directory
+2. Copy PEMCAFE_ad.py and your input CSV to this directory
 
 ### 2. Code Configuration
-Open PEMCAFE.py and modify these parameters:
+Open PEMCAFE_ad.py and modify these parameters:
 
 ```python
 # File paths
@@ -164,7 +164,7 @@ cd path/to/pemcafe_project
 source pemcafe-env/bin/activate  # or pemcafe-env\Scripts\activate on Windows
 
 # Run the model
-python PEMCAFE.py
+python PEMCAFE_ad.py
 ```
 
 ### 2. Monitor Progress
