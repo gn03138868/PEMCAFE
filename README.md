@@ -7,7 +7,7 @@ PEMCAFE (version 0.9, released October 10, 2024) is a process-based ecosystem mo
 - Comprehensive carbon pool calculations
 - Above-ground and below-ground carbon flux estimation
 - Two methods for BNPP estimation
-- Automated parameter optimization
+- Automated parameter optimisation
 - Iterative convergence mechanism
 - Optional harvested bamboo products consideration
 
@@ -148,7 +148,7 @@ output_path = "path/to/your/optimised_outputresultsforPEMCAFE.csv"
 HBP = 0  # Set to 1 if harvesting bamboo products
 BNPPmethod = 1  # 1 for BNG + Dbelow, 0 for BNG + Soil_AR
 
-# Optimization parameters
+# Optimisation parameters
 tolerance = 1e-6
 max_iterations = 100
 ```
@@ -169,7 +169,7 @@ python PEMCAFE_ad.py
 
 ### 2. Monitor Progress
 The model will display:
-- Optimization progress
+- Optimisation progress
 - Iteration count
 - RMSE values
 - Final parameter values
