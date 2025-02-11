@@ -7,7 +7,7 @@ PEMCAFE (version 0.9, released October 10, 2024) is a process-based ecosystem mo
 - Comprehensive carbon pool calculations
 - Above-ground and below-ground carbon flux estimation
 - Two methods for BNPP estimation
-- Automated parameter optimisation
+- endogenous parameter optimisation
 - Iterative convergence mechanism
 - Optional harvested bamboo products consideration
 
