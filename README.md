@@ -1,7 +1,7 @@
-# PEMCAFE (Process-based Ecosystem Model for Carbon Assessment in Forest Ecosystems)
+# PEMCAFE (Process-based Ecosystem Model for Carbon Allocation in Forest Ecosystems)
 
 ## Overview
-PEMCAFE (version 0.9, released October 10, 2024) is a process-based ecosystem model designed for carbon assessment in forest ecosystems, with a specific focus on forests with unstable root-shoot ratio. This model implements comprehensive carbon cycle calculations and provides various ecosystem productivity metrics.
+PEMCAFE (version 0.9, released October 10, 2024) is a process-based ecosystem model designed for carbon assessment in forest ecosystems. It specifically focuses on forests with unstable root to shoot ratios. This model implements comprehensive carbon cycle calculations and provides various ecosystem productivity metrics.
 
 ## Key Features
 - Comprehensive carbon pool calculations
