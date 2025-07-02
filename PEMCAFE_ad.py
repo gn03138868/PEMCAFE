@@ -1,4 +1,4 @@
-# PEMCAFE (ver. 0.92 02 July 2025 stable) with 95% CI estimation via sd from AGC
+# PEMCAFE (ver. 0.95 02 July 2025 stable) with 95% CI estimation via sd from AGC
 # ANPP = delta AGC + litterfall 
 # but BNPP have different methods 
 # 1. delta BGC + Dbelow
@@ -356,9 +356,38 @@ class PEMCAFEModelGUI:
     
     def calculate_values(self, row, prev_row, params):
         """Calculate values for each row - same as original function"""
+        
+        # 添加保護性檢查
+        def safe_divide(a, b):
+            return a / b if abs(b) > 1e-10 else 0.0
+    
+        def safe_exp(x):
+            try:
+                return math.exp(x)
+            except:
+                return 0.0
+            
+        # 初始化prev_row為全零字典（如果為None）
+        if prev_row is None:
+            # 創建包含所有必要字段的默認prev_row
+            default_vals = {col: 0.0 for col in self.df.columns}
+            default_vals.update({
+                'Litter_layer': row['Litter_layer'] if 'Litter_layer' in row else 0.01,
+                'SC': row['SC'] if 'SC' in row else 0.01,
+                'Foliages': row['Foliages'] if 'Foliages' in row else 0.01,
+                'Branches': row['Branches'] if 'Branches' in row else 0.01,
+                'Culms': row['Culms'] if 'Culms' in row else 0.01,
+                'Stumps': row['Stumps'] if 'Stumps' in row else 0.01,
+                'Rhizomes': row['Rhizomes'] if 'Rhizomes' in row else 0.01,
+                'Roots': row['Roots'] if 'Roots' in row else 0.01,
+            })
+            prev_row = pd.Series(default_vals)
+        
         kLitter, LTurnoverR, BTurnoverR, CTurnoverR, StTurnoverR, RhTurnoverR, RoTurnoverR, Rratio_Litter_layer = params
         
         results = row.to_dict()
+        
+
         
         # Net production calculations
         results['LNP'] = row['Foliages'] - prev_row['Foliages'] if prev_row is not None else 0
@@ -381,7 +410,7 @@ class PEMCAFEModelGUI:
             results['Roots'] = prev_row['Roots'] + results['RoNP']
         
         results['BGC'] = results['Stumps'] + results['Rhizomes'] + results['Roots']
-        results['Root_Shoot_Ratio'] = results['BGC'] / results['AGC'] if results['AGC'] != 0 else 0
+        results['Root_Shoot_Ratio'] = safe_divide(results['BGC'], results['AGC'])
         results['TC'] = results['AGC'] + results['BGC']
         
         # Death calculations
@@ -421,20 +450,20 @@ class PEMCAFEModelGUI:
         results['Soil_HR'] = 0.0071 * hr_anpp**3.0772 if results['ANPP'] != 0 else 0
         
         # Autotrophic respiration calculations
-        results['Foliages_AR'] = 1.172/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Foliages']/0.4544 * 1000000) /1000/1000/1000 * 12/44.01)
-        results['Branches_AR'] = 0.215/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Branches']/0.4815 * 1000000) /1000/1000/1000 * 12/44.01)
-        results['Culms_AR'] = 0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Culms']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)
+        results['Foliages_AR'] = 1.172/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Foliages']/0.4544 * 1000000) /1000/1000/1000 * 12/44.01)
+        results['Branches_AR'] = 0.215/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Branches']/0.4815 * 1000000) /1000/1000/1000 * 12/44.01)
+        results['Culms_AR'] = 0.085/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Culms']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)
         results['Aboveground_AR'] = results['Foliages_AR'] + results['Branches_AR'] + results['Culms_AR']
         
         # Soil AR ratios
-        denominator = ((0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))+
-                      (0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01))+
-                      (0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)))
+        denominator = ((0.088/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))+
+                      (0.179/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01))+
+                      (0.085/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)))
         
-        if denominator != 0:
-            results['Roots_AR_ratio'] = (0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
-            results['Rhizomes_AR_ratio'] = (0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
-            results['Stumps_AR_ratio'] = (0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
+        if abs(denominator) > 1e-10:
+            results['Roots_AR_ratio'] = (0.088/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
+            results['Rhizomes_AR_ratio'] = (0.179/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
+            results['Stumps_AR_ratio'] = (0.085/1.172 * ((1.445 * 10**(-1) * safe_exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
         else:
             results['Roots_AR_ratio'] = 0
             results['Rhizomes_AR_ratio'] = 0
@@ -615,7 +644,17 @@ class PEMCAFEModelGUI:
                 original_values = perturbed_df[var].values
                 random_perturbations = np.random.normal(0, sds[var], len(original_values))
                 perturbed_values = original_values + random_perturbations
-                perturbed_values = np.maximum(perturbed_values, 0.01)  # Ensure positive values
+                # 根據變量類型應用不同的約束
+                if var in ['Foliages', 'Branches', 'Culms', 'Roots', 'Rhizomes', 'Stumps']:
+                    # 生物量變量應為非負
+                    perturbed_values = np.maximum(perturbed_values, 0.01)
+                elif var == 'AvgTemp':
+                    # 溫度應在合理範圍內
+                    perturbed_values = np.clip(perturbed_values, -10, 50)
+                elif var in ['Litter_layer', 'SC']:
+                    # 土壤和凋落物應為非負
+                    perturbed_values = np.maximum(perturbed_values, 0.01)
+                    
                 perturbed_df[var] = perturbed_values
         
         return perturbed_df
@@ -624,6 +663,7 @@ class PEMCAFEModelGUI:
         """Run Monte Carlo simulation"""
         input_sds = self.get_input_sds()
         all_results = []
+        error_log = []
         
         for i in range(n_simulations):
             if i % 100 == 0:
@@ -633,17 +673,31 @@ class PEMCAFEModelGUI:
             try:
                 perturbed_df = self.generate_perturbed_data(self.df, input_sds)
                 result = self.run_model(params, perturbed_df)
-                all_results.append(result)
-            except:
-                continue
-        
+            # 檢查結果是否有效
+                if result.isnull().values.any():
+                    error_msg = f"Simulation {i+1} contains NaN values"
+                    error_log.append(error_msg)
+                else:
+                    all_results.append(result)
+            except Exception as e:
+                error_msg = f"Simulation {i+1} failed: {str(e)}"
+                error_log.append(error_msg)
+    
+        # 保存錯誤日誌
+        if error_log:
+            with open("monte_carlo_errors.log", "w") as f:
+                f.write("\n".join(error_log))
+    
         return all_results
     
     def calculate_confidence_intervals(self, all_results, confidence_level=0.95):
         """Calculate confidence intervals from Monte Carlo results"""
         if len(all_results) == 0:
             return None
-        
+        # 清理結果 - 替換NaN為0
+        for result in all_results:
+            result.fillna(0, inplace=True)
+            
         output_columns = [col for col in all_results[0].columns 
                          if col not in ['t', 'AvgTemp', 'Undergrowth']]
         
