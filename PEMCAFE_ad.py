@@ -1,4 +1,4 @@
-# PEMCAFE (ver. 0.92 02 July 2025) with 95% CI estimation via sd from AGC
+# PEMCAFE (ver. 0.92 02 July 2025 stable) with 95% CI estimation via sd from AGC
 # ANPP = delta AGC + litterfall 
 # but BNPP have different methods 
 # 1. delta BGC + Dbelow
@@ -20,7 +20,7 @@ import os
 class PEMCAFEModelGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("PEMCAFE Model Controller (ver. 0.91)")
+        self.root.title("PEMCAFE Model Controller (ver. 0.92)")
         self.root.geometry("1200x800")
         
         # Initialize variables
@@ -241,13 +241,13 @@ class PEMCAFEModelGUI:
         self.confidence_level_var = tk.DoubleVar(value=0.95)
         ttk.Entry(ci_frame, textvariable=self.confidence_level_var, width=15).pack(side=tk.LEFT, padx=10)
         
-        # Optimization settings
-        ttk.Label(settings_frame, text="Optimization Settings", font=('Arial', 14, 'bold')).pack(pady=(40,20))
+        # Optimisation settings
+        ttk.Label(settings_frame, text="Optimisation Settings", font=('Arial', 14, 'bold')).pack(pady=(40,20))
         
         opt_frame = ttk.Frame(settings_frame)
         opt_frame.pack(fill=tk.X, padx=50, pady=10)
         
-        ttk.Label(opt_frame, text="Optimization Method:", width=20).pack(side=tk.LEFT)
+        ttk.Label(opt_frame, text="Optimisation Method:", width=20).pack(side=tk.LEFT)
         self.opt_method_var = tk.StringVar(value="Nelder-Mead")
         method_combo = ttk.Combobox(opt_frame, textvariable=self.opt_method_var, width=15)
         method_combo['values'] = ("Nelder-Mead", "L-BFGS-B", "TNC", "SLSQP")
@@ -257,7 +257,7 @@ class PEMCAFEModelGUI:
         button_frame = ttk.Frame(settings_frame)
         button_frame.pack(pady=40)
         
-        ttk.Button(button_frame, text="Run Optimization Only", command=self.run_optimization, 
+        ttk.Button(button_frame, text="Run Optimisation Only", command=self.run_optimisation, 
                   style='Accent.TButton').pack(side=tk.LEFT, padx=10)
         ttk.Button(button_frame, text="Run Full Analysis (with MC)", command=self.run_full_analysis, 
                   style='Accent.TButton').pack(side=tk.LEFT, padx=10)
@@ -491,7 +491,7 @@ class PEMCAFEModelGUI:
         return pd.DataFrame(results)
     
     def objective_function(self, params):
-        """Objective function for optimization"""
+        """Objective function for optimisation"""
         try:
             results = self.run_model(params)
             if len(results) > 1:
@@ -502,15 +502,15 @@ class PEMCAFEModelGUI:
         except:
             return 1e6
     
-    def run_optimization(self):
-        """Run optimization only"""
+    def run_optimisation(self):
+        """Run optimisation only"""
         if self.df is None:
             messagebox.showerror("Error", "Please load input data first")
             return
         
-        def optimize():
+        def optimise():
             try:
-                self.status_var.set("Running optimization...")
+                self.status_var.set("Running optimisation...")
                 self.root.update()
                 
                 initial_params = self.get_model_parameters()
@@ -529,20 +529,20 @@ class PEMCAFEModelGUI:
                 
                 self.optimized_params = result.x
                 
-                # Run model with optimized parameters
+                # Run model with optimised parameters
                 self.results = self.run_model(self.optimized_params)
                 
                 # Display results
-                self.display_optimization_results(result)
+                self.display_optimisation_results(result)
                 
-                self.status_var.set("Optimization completed successfully")
+                self.status_var.set("Optimisation completed successfully")
                 
             except Exception as e:
-                messagebox.showerror("Error", f"Optimization failed: {str(e)}")
-                self.status_var.set("Optimization failed")
+                messagebox.showerror("Error", f"Optimisation failed: {str(e)}")
+                self.status_var.set("Optimisation failed")
         
         # Run in separate thread to prevent GUI freezing
-        threading.Thread(target=optimize, daemon=True).start()
+        threading.Thread(target=optimise, daemon=True).start()
     
     def run_full_analysis(self):
         """Run full analysis with Monte Carlo simulation"""
@@ -555,7 +555,7 @@ class PEMCAFEModelGUI:
                 self.status_var.set("Running full analysis...")
                 self.root.update()
                 
-                # First run optimization
+                # First run optimisation
                 initial_params = self.get_model_parameters()
                 bounds = self.get_parameter_bounds()
                 
@@ -565,7 +565,7 @@ class PEMCAFEModelGUI:
                     {'type': 'ineq', 'fun': lambda params: params[6] - params[5]}
                 ]
                 
-                self.status_var.set("Running optimization...")
+                self.status_var.set("Running optimisation...")
                 self.root.update()
                 
                 result = minimize(self.objective_function, initial_params, 
@@ -688,22 +688,22 @@ class PEMCAFEModelGUI:
         
         return final_results
     
-    def display_optimization_results(self, optimization_result):
-        """Display optimization results"""
+    def display_optimisation_results(self, optimisation_result):
+        """Display optimisation results"""
         self.results_text.delete(1.0, tk.END)
         
         param_names = ['kLitter', 'LTurnoverR', 'BTurnoverR', 'CTurnoverR', 
                       'StTurnoverR', 'RhTurnoverR', 'RoTurnoverR', 'Rratio_Litter_layer']
         
-        results_text = "PEMCAFE Model Optimization Results\n"
+        results_text = "PEMCAFE Model Optimisation Results\n"
         results_text += "=" * 50 + "\n\n"
         
-        results_text += f"Optimization Status: {'Success' if optimization_result.success else 'Failed'}\n"
-        results_text += f"Optimization Method: {self.opt_method_var.get()}\n"
-        results_text += f"Final Objective Value: {optimization_result.fun:.6f}\n"
-        results_text += f"Number of Iterations: {optimization_result.nit if hasattr(optimization_result, 'nit') else 'N/A'}\n\n"
+        results_text += f"Optimisation Status: {'Success' if optimisation_result.success else 'Failed'}\n"
+        results_text += f"Optimisation Method: {self.opt_method_var.get()}\n"
+        results_text += f"Final Objective Value: {optimisation_result.fun:.6f}\n"
+        results_text += f"Number of Iterations: {optimisation_result.nit if hasattr(optimisation_result, 'nit') else 'N/A'}\n\n"
         
-        results_text += "Optimized Parameters:\n"
+        results_text += "Optimised Parameters:\n"
         results_text += "-" * 30 + "\n"
         for i, (name, value) in enumerate(zip(param_names, self.optimized_params)):
             results_text += f"{name:20}: {value:.6f}\n"
@@ -724,7 +724,7 @@ class PEMCAFEModelGUI:
         # Switch to results tab
         self.notebook.select(4)
     
-    def display_full_analysis_results(self, optimization_result, ci_results):
+    def display_full_analysis_results(self, optimisation_result, ci_results):
         """Display full analysis results with confidence intervals"""
         self.results_text.delete(1.0, tk.END)
         
@@ -734,13 +734,13 @@ class PEMCAFEModelGUI:
         results_text = "PEMCAFE Model Full Analysis Results\n"
         results_text += "=" * 60 + "\n\n"
         
-        # Optimization results
-        results_text += "OPTIMIZATION RESULTS:\n"
-        results_text += f"Status: {'Success' if optimization_result.success else 'Failed'}\n"
+        # Optimisation results
+        results_text += "OPTIMISATION RESULTS:\n"
+        results_text += f"Status: {'Success' if optimisation_result.success else 'Failed'}\n"
         results_text += f"Method: {self.opt_method_var.get()}\n"
-        results_text += f"Final Objective Value: {optimization_result.fun:.6f}\n\n"
+        results_text += f"Final Objective Value: {optimisation_result.fun:.6f}\n\n"
         
-        results_text += "Optimized Parameters:\n"
+        results_text += "Optimised Parameters:\n"
         for i, (name, value) in enumerate(zip(param_names, self.optimized_params)):
             results_text += f"  {name:20}: {value:.6f}\n"
         
