@@ -1,216 +1,806 @@
-# PEMCAFE (ver. 0.9 10.Oct.2024)
+# PEMCAFE (ver. 0.92 02 July 2025) with 95% CI estimation via sd from AGC
 # ANPP = delta AGC + litterfall 
 # but BNPP have different methods 
 # 1. delta BGC + Dbelow
 # 2. delta BGC + Soil_AR
 
-# combind single time version
+# combined single time version with Monte Carlo simulation for CI estimation
+# user interface built
 
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
 import pandas as pd
 import numpy as np
 import math
 from scipy.optimize import minimize
+from scipy import stats
+import threading
+import os
 
-# Read the CSV file
-df = pd.read_csv(r"Z:\RF for bamboo\Task C1\inputdataforPEMCAFE.csv")
-
-# Define initial parameters
-initial_params = [
-    0.32,  # kLitter 
-    0.63,  # LTurnoverR #Kobayashi et al., 2022
-    0.21,  # BTurnoverR #Kobayashi et al., 2022
-    0.18,  # CTurnoverR #Kobayashi et al., 2022
-    0.18,  # StTurnoverR #Kobayashi et al., 2022
-    0.9 / 8.1,  # RhTurnoverR #Kobayashi et al., 2022
-    3.10 / 8.40,  # RoTurnoverR #Kobayashi et al., 2022
-    3.87561968569648 / (1.57416255555556 + 3.87561968569648)  # Rratio_Litter_layer #Isagi et al., 1997
-]
-
-# Define bounds for parameters (all must be positive)
-bounds = [
-    (0, None),  # kLitter
-    (0, None),  # LTurnoverR
-    (0, None),  # BTurnoverR
-    (0, None),  # CTurnoverR
-    (0, None),  # StTurnoverR
-    (0, None),  # RhTurnoverR
-    (0, None),  # RoTurnoverR
-    (0, 1)     # Rratio_Litter_layer
-]
-
-# Constraints: LTurnoverR > BTurnoverR > CTurnoverR and RoTurnoverR > RhTurnoverR
-constraints = [
-    {'type': 'ineq', 'fun': lambda params: params[1] - params[2]},  # LTurnoverR > BTurnoverR
-    {'type': 'ineq', 'fun': lambda params: params[2] - params[3]},  # BTurnoverR > CTurnoverR
-    {'type': 'ineq', 'fun': lambda params: params[6] - params[5]}   # RoTurnoverR > RhTurnoverR
-]
-
-# Is harvesting bamboo products or not?
-# If yes, HBP = 1 else 0
-#HBP = 1
-HBP = 0
-
-# Which method you would like to estimate BNPP
-# If BNG + Dbelow, BNPPmethod=1 else 0 (BNG + Soil_AR)
-BNPPmethod=1
-#BNPPmethod=0
-
-
-# Function to calculate values for each row
-def calculate_values(row, prev_row, params):
-    kLitter, LTurnoverR, BTurnoverR, CTurnoverR, StTurnoverR, RhTurnoverR, RoTurnoverR, Rratio_Litter_layer = params
-
-    results = row.to_dict()  # Start with all original data
-
-    results['LNP'] = row['Foliages'] - prev_row['Foliages'] if prev_row is not None else 0
-    results['BNP'] = row['Branches'] - prev_row['Branches'] if prev_row is not None else 0
-    results['CNP'] = row['Culms'] - prev_row['Culms'] if prev_row is not None else 0
-
-    results['AGC'] = row['Foliages'] + row['Branches'] + row['Culms']
-
-    results['StNP'] = 0.1955 * results['CNP']
-    results['RhNP'] = 1.1162 * abs(results['LNP'])**0.7279 if results['LNP'] != 0 else 0
-    results['RoNP'] = 0.9847 * results['RhNP']
-
-    if prev_row is None:
-        results['Stumps'] = row['Stumps']
-        results['Rhizomes'] = row['Rhizomes']
-        results['Roots'] = row['Roots']
-    else:
-        results['Stumps'] = prev_row['Stumps'] + results['StNP']
-        results['Rhizomes'] = prev_row['Rhizomes'] + results['RhNP']
-        results['Roots'] = prev_row['Roots'] + results['RoNP']
-
-    results['BGC'] = results['Stumps'] + results['Rhizomes'] + results['Roots']
-    results['Root_Shoot_Ratio'] = results['BGC'] / results['AGC'] if results['AGC'] != 0 else 0
-    results['TC'] = results['AGC'] + results['BGC']
-
-    results['LD'] = prev_row['Foliages'] * LTurnoverR if prev_row is not None else 0
-    results['BD'] = prev_row['Branches'] * BTurnoverR if prev_row is not None else 0
-    results['CD'] = prev_row['Culms'] * CTurnoverR if prev_row is not None else 0
-
-    if HBP == 1:
-        results['Litterfall'] = results['LD'] + results['BD']  # Exclude `CD`
-    else:
-        results['Litterfall'] = results['LD'] + results['BD'] + results['CD']  # Include `CD`
-
-    results['ANPP'] = results['LNP'] + results['BNP'] + results['CNP'] + results['Litterfall']
-
-    results['StD'] = prev_row['Stumps'] * StTurnoverR if prev_row is not None else 0
-    results['RhD'] = prev_row['Rhizomes'] * RhTurnoverR if prev_row is not None else 0
-    results['RoD'] = prev_row['Roots'] * RoTurnoverR if prev_row is not None else 0
-
-    results['Dbelow'] = results['StD'] + results['RhD'] + results['RoD']
-
-    if BNPPmethod == 1:
-        results['BNPP'] = results['StNP'] + results['RhNP'] + results['RoNP'] + results['Dbelow']
-    else:
-        results['BNPP'] = results['StNP'] + results['RhNP'] + results['RoNP'] + results['Soil_AR']    
-    
-    results['TNPP'] = results['ANPP'] + results['BNPP']
-
-    if results['ANPP'] < 4.17:
-        hr_anpp = 4.17
-    elif results['ANPP'] > 11.8:
-        hr_anpp = 11.8
-    else:
-        hr_anpp = results['ANPP']
-    results['Soil_HR'] = 0.0071 * hr_anpp**3.0772 if results['ANPP'] != 0 else 0
-
-    results['Foliages_AR'] = 1.172/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Foliages']/0.4544 * 1000000) /1000/1000/1000 * 12/44.01) 
-    results['Branches_AR'] = 0.215/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Branches']/0.4815 * 1000000) /1000/1000/1000 * 12/44.01)
-    results['Culms_AR'] = 0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Culms']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)
-    results['Aboveground_AR'] = results['Foliages_AR'] + results['Branches_AR'] + results['Culms_AR']
-    
-    results['Roots_AR_ratio'] = (0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))/((0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))+(0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01))+(0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)))
-
-    results['Rhizomes_AR_ratio'] = (0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))/((0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))+(0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01))+(0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)))
-
-    results['Stumps_AR_ratio'] = (0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01))/((0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))+(0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01))+(0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)))
-    
-    results['Soil_AR'] = 0.000006 * results['BGC']**3.3249 
-    
-    # Calculate and add Roots_AR, Rhizomes_AR, and Stumps_AR to the results
-    results['Roots_AR'] = results['Soil_AR'] * results['Roots_AR_ratio']
-    results['Rhizomes_AR'] = results['Soil_AR'] * results['Rhizomes_AR_ratio']
-    results['Stumps_AR'] = results['Soil_AR'] * results['Stumps_AR_ratio']
-    
-    results['AR'] = results['Aboveground_AR'] + results['Soil_AR'] 
-    
-    results['SR'] = results['Soil_AR'] + results['Soil_HR']
-    results['NEP_with_Aboveground_Detritus_Litter_layer_HR'] = results['TNPP'] - results['Soil_HR'] if results['TNPP'] != 0 else 0 
-
-    results['Litter_layer'] = (prev_row['Litter_layer'] + results['Litterfall']) * kLitter if prev_row is not None else row['Litter_layer']
-    results['DLitter_layer'] = results['Litter_layer'] * kLitter
-    results['Litter_layer_HR'] = results['Litter_layer'] * Rratio_Litter_layer
-
-    results['HR'] = results['Soil_HR'] + results['Litter_layer_HR']
-    results['NEP'] = results['NEP_with_Aboveground_Detritus_Litter_layer_HR'] - results['Litter_layer_HR'] if results['TNPP'] != 0 else 0
-
-    if prev_row is not None:
-        results['SC'] = prev_row['SC'] + results['Dbelow'] - results['Soil_HR'] + results['DLitter_layer']
-    else:
-        results['SC'] = row['SC']
+class PEMCAFEModelGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("PEMCAFE Model Controller (ver. 0.91)")
+        self.root.geometry("1200x800")
         
-    results['dSC'] = results['SC'] - prev_row['SC'] if prev_row is not None else 0
-    results['TEC'] = results['TC'] + results['Litter_layer'] + results['SC'] + row['Undergrowth']
-    results['NEP_from_dTEC'] = results['TEC'] - prev_row['TEC'] if prev_row is not None else 0
+        # Initialize variables
+        self.df = None
+        self.results = None
+        self.optimized_params = None
+        
+        # Create notebook for tabs
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Create tabs
+        self.create_file_tab()
+        self.create_parameters_tab()
+        self.create_input_uncertainty_tab()
+        self.create_model_settings_tab()
+        self.create_results_tab()
+        
+        # Status bar
+        self.status_var = tk.StringVar()
+        self.status_var.set("Ready")
+        self.status_bar = ttk.Label(root, textvariable=self.status_var, relief=tk.SUNKEN)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+    def create_file_tab(self):
+        """File operations tab"""
+        file_frame = ttk.Frame(self.notebook)
+        self.notebook.add(file_frame, text="File & Data")
+        
+        # File selection
+        ttk.Label(file_frame, text="Input CSV File:", font=('Arial', 12, 'bold')).pack(pady=10)
+        
+        file_select_frame = ttk.Frame(file_frame)
+        file_select_frame.pack(pady=5)
+        
+        self.file_path_var = tk.StringVar()
+        ttk.Entry(file_select_frame, textvariable=self.file_path_var, width=60).pack(side=tk.LEFT, padx=5)
+        ttk.Button(file_select_frame, text="Browse", command=self.browse_file).pack(side=tk.LEFT, padx=5)
+        ttk.Button(file_select_frame, text="Load", command=self.load_file).pack(side=tk.LEFT, padx=5)
+        
+        # Data preview
+        ttk.Label(file_frame, text="Data Preview:", font=('Arial', 12, 'bold')).pack(pady=(20,5))
+        
+        # Create treeview for data preview
+        self.data_tree = ttk.Treeview(file_frame)
+        self.data_tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Scrollbars for treeview
+        v_scrollbar = ttk.Scrollbar(file_frame, orient=tk.VERTICAL, command=self.data_tree.yview)
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.data_tree.configure(yscrollcommand=v_scrollbar.set)
+        
+        h_scrollbar = ttk.Scrollbar(file_frame, orient=tk.HORIZONTAL, command=self.data_tree.xview)
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.data_tree.configure(xscrollcommand=h_scrollbar.set)
+        
+    def create_parameters_tab(self):
+        """Model parameters tab"""
+        param_frame = ttk.Frame(self.notebook)
+        self.notebook.add(param_frame, text="Model Parameters")
+        
+        # Create scrollable frame
+        canvas = tk.Canvas(param_frame)
+        scrollbar = ttk.Scrollbar(param_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Initial parameters
+        ttk.Label(scrollable_frame, text="Initial Model Parameters", font=('Arial', 14, 'bold')).pack(pady=10)
+        
+        self.param_vars = {}
+        initial_values = {
+            'kLitter': 0.32,
+            'LTurnoverR': 0.63,
+            'BTurnoverR': 0.21,
+            'CTurnoverR': 0.18,
+            'StTurnoverR': 0.18,
+            'RhTurnoverR': 0.9/8.1,
+            'RoTurnoverR': 3.10/8.40,
+            'Rratio_Litter_layer': 3.87561968569648/(1.57416255555556 + 3.87561968569648)
+        }
+        
+        param_descriptions = {
+            'kLitter': 'Litter decomposition rate',
+            'LTurnoverR': 'Leaf turnover rate', #(Kobayashi et al., 2022)
+            'BTurnoverR': 'Branch turnover rate', 
+            'CTurnoverR': 'Culm turnover rate',
+            'StTurnoverR': 'Stump turnover rate',
+            'RhTurnoverR': 'Rhizome turnover rate',
+            'RoTurnoverR': 'Root turnover rate',
+            'Rratio_Litter_layer': 'Litter layer respiration ratio' #(Isagi et al., 1997)
+        }
+        
+        for param, initial_val in initial_values.items():
+            frame = ttk.Frame(scrollable_frame)
+            frame.pack(fill=tk.X, padx=20, pady=5)
+            
+            ttk.Label(frame, text=f"{param}:", width=20).pack(side=tk.LEFT)
+            var = tk.DoubleVar(value=initial_val)
+            self.param_vars[param] = var
+            
+            entry = ttk.Entry(frame, textvariable=var, width=15)
+            entry.pack(side=tk.LEFT, padx=5)
+            
+            ttk.Label(frame, text=param_descriptions[param], foreground='gray').pack(side=tk.LEFT, padx=10)
+        
+        # Parameter bounds
+        ttk.Label(scrollable_frame, text="Parameter Bounds", font=('Arial', 14, 'bold')).pack(pady=(20,10))
+        
+        self.bounds_vars = {}
+        default_bounds = {
+            'kLitter': (0, 1),
+            'LTurnoverR': (0, 2),
+            'BTurnoverR': (0, 2),
+            'CTurnoverR': (0, 2),
+            'StTurnoverR': (0, 2),
+            'RhTurnoverR': (0, 1),
+            'RoTurnoverR': (0, 1),
+            'Rratio_Litter_layer': (0, 1)
+        }
+        
+        for param in initial_values.keys():
+            frame = ttk.Frame(scrollable_frame)
+            frame.pack(fill=tk.X, padx=20, pady=3)
+            
+            ttk.Label(frame, text=f"{param} bounds:", width=20).pack(side=tk.LEFT)
+            
+            lower_var = tk.DoubleVar(value=default_bounds[param][0])
+            upper_var = tk.DoubleVar(value=default_bounds[param][1] if default_bounds[param][1] is not None else 10)
+            
+            ttk.Label(frame, text="Min:").pack(side=tk.LEFT, padx=5)
+            ttk.Entry(frame, textvariable=lower_var, width=10).pack(side=tk.LEFT, padx=2)
+            
+            ttk.Label(frame, text="Max:").pack(side=tk.LEFT, padx=5)
+            ttk.Entry(frame, textvariable=upper_var, width=10).pack(side=tk.LEFT, padx=2)
+            
+            self.bounds_vars[param] = (lower_var, upper_var)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+    def create_input_uncertainty_tab(self):
+        """Input uncertainty tab"""
+        uncertainty_frame = ttk.Frame(self.notebook)
+        self.notebook.add(uncertainty_frame, text="Input Uncertainty")
+        
+        ttk.Label(uncertainty_frame, text="Standard Deviations for Input Variables", font=('Arial', 14, 'bold')).pack(pady=10)
+        
+        self.sd_vars = {}
+        default_sds = {
+            'Foliages': 0.3,
+            'Branches': 0.7,
+            'Culms': 3.2,
+            'Roots': 0.4,
+            'Rhizomes': 0.3,
+            'Stumps': 1.1
+        }
+        
+        for var, default_sd in default_sds.items():
+            frame = ttk.Frame(uncertainty_frame)
+            frame.pack(fill=tk.X, padx=50, pady=10)
+            
+            ttk.Label(frame, text=f"{var} SD:", width=15, font=('Arial', 11)).pack(side=tk.LEFT)
+            sd_var = tk.DoubleVar(value=default_sd)
+            self.sd_vars[var] = sd_var
+            
+            ttk.Entry(frame, textvariable=sd_var, width=15).pack(side=tk.LEFT, padx=10)
+            ttk.Label(frame, text="Standard deviation for Monte Carlo simulation", foreground='gray').pack(side=tk.LEFT, padx=10)
     
-    results['GPP'] = results['TNPP'] + results['AR'] 
-
-    return results
-
-# Function to run the model with iteration until convergence
-def run_model_until_convergence(params, tolerance=1e-6, max_iterations=100):
-    # Initialize iteration variables
-    prev_results = None
-    iteration = 0
-    converged = False
+    def create_model_settings_tab(self):
+        """Model settings tab"""
+        settings_frame = ttk.Frame(self.notebook)
+        self.notebook.add(settings_frame, text="Model Settings")
+        
+        # Model options
+        ttk.Label(settings_frame, text="Model Configuration", font=('Arial', 14, 'bold')).pack(pady=20)
+        
+        # Harvesting bamboo products
+        harvesting_frame = ttk.Frame(settings_frame)
+        harvesting_frame.pack(fill=tk.X, padx=50, pady=10)
+        
+        ttk.Label(harvesting_frame, text="Harvesting Woody Products (HWP) or Harvesting Bamboo Products (HBP) :", width=30).pack(side=tk.LEFT)
+        self.hbp_var = tk.IntVar(value=0)
+        ttk.Radiobutton(harvesting_frame, text="No (0)", variable=self.hbp_var, value=0).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(harvesting_frame, text="Yes (1)", variable=self.hbp_var, value=1).pack(side=tk.LEFT, padx=10)
+        
+        # BNPP method
+        bnpp_frame = ttk.Frame(settings_frame)
+        bnpp_frame.pack(fill=tk.X, padx=50, pady=10)
+        
+        ttk.Label(bnpp_frame, text="BNPP Estimation Method:", width=30).pack(side=tk.LEFT)
+        self.bnpp_method_var = tk.IntVar(value=1)
+        ttk.Radiobutton(bnpp_frame, text="BGC + Dbelow (1)", variable=self.bnpp_method_var, value=1).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(bnpp_frame, text="BGC + Soil_AR (0)", variable=self.bnpp_method_var, value=0).pack(side=tk.LEFT, padx=10)
+        
+        # Monte Carlo settings
+        ttk.Label(settings_frame, text="Monte Carlo Simulation", font=('Arial', 14, 'bold')).pack(pady=(40,20))
+        
+        mc_frame = ttk.Frame(settings_frame)
+        mc_frame.pack(fill=tk.X, padx=50, pady=10)
+        
+        ttk.Label(mc_frame, text="Number of Simulations:", width=20).pack(side=tk.LEFT)
+        self.n_simulations_var = tk.IntVar(value=1000)
+        ttk.Entry(mc_frame, textvariable=self.n_simulations_var, width=15).pack(side=tk.LEFT, padx=10)
+        
+        # Confidence level
+        ci_frame = ttk.Frame(settings_frame)
+        ci_frame.pack(fill=tk.X, padx=50, pady=10)
+        
+        ttk.Label(ci_frame, text="Confidence Level:", width=20).pack(side=tk.LEFT)
+        self.confidence_level_var = tk.DoubleVar(value=0.95)
+        ttk.Entry(ci_frame, textvariable=self.confidence_level_var, width=15).pack(side=tk.LEFT, padx=10)
+        
+        # Optimization settings
+        ttk.Label(settings_frame, text="Optimization Settings", font=('Arial', 14, 'bold')).pack(pady=(40,20))
+        
+        opt_frame = ttk.Frame(settings_frame)
+        opt_frame.pack(fill=tk.X, padx=50, pady=10)
+        
+        ttk.Label(opt_frame, text="Optimization Method:", width=20).pack(side=tk.LEFT)
+        self.opt_method_var = tk.StringVar(value="Nelder-Mead")
+        method_combo = ttk.Combobox(opt_frame, textvariable=self.opt_method_var, width=15)
+        method_combo['values'] = ("Nelder-Mead", "L-BFGS-B", "TNC", "SLSQP")
+        method_combo.pack(side=tk.LEFT, padx=10)
+        
+        # Run buttons
+        button_frame = ttk.Frame(settings_frame)
+        button_frame.pack(pady=40)
+        
+        ttk.Button(button_frame, text="Run Optimization Only", command=self.run_optimization, 
+                  style='Accent.TButton').pack(side=tk.LEFT, padx=10)
+        ttk.Button(button_frame, text="Run Full Analysis (with MC)", command=self.run_full_analysis, 
+                  style='Accent.TButton').pack(side=tk.LEFT, padx=10)
+        
+    def create_results_tab(self):
+        """Results display tab"""
+        results_frame = ttk.Frame(self.notebook)
+        self.notebook.add(results_frame, text="Results")
+        
+        # Results display area
+        self.results_text = tk.Text(results_frame, wrap=tk.WORD, height=30)
+        self.results_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Scrollbar for results
+        results_scrollbar = ttk.Scrollbar(results_frame, orient=tk.VERTICAL, command=self.results_text.yview)
+        results_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.results_text.configure(yscrollcommand=results_scrollbar.set)
+        
+        # Export button
+        export_frame = ttk.Frame(results_frame)
+        export_frame.pack(pady=10)
+        
+        ttk.Button(export_frame, text="Export Results to CSV", command=self.export_results).pack()
+        
+    def browse_file(self):
+        """Browse for input CSV file"""
+        filename = filedialog.askopenfilename(
+            title="Select Input CSV File",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if filename:
+            self.file_path_var.set(filename)
+            
+    def load_file(self):
+        """Load and preview the CSV file"""
+        try:
+            filepath = self.file_path_var.get()
+            if not filepath:
+                messagebox.showerror("Error", "Please select a file first")
+                return
+                
+            self.df = pd.read_csv(filepath)
+            self.display_data_preview()
+            self.status_var.set(f"Loaded {len(self.df)} rows from {os.path.basename(filepath)}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load file: {str(e)}")
+            
+    def display_data_preview(self):
+        """Display data preview in treeview"""
+        if self.df is None:
+            return
+            
+        # Clear existing data
+        for item in self.data_tree.get_children():
+            self.data_tree.delete(item)
+            
+        # Set up columns
+        self.data_tree["columns"] = list(self.df.columns)
+        self.data_tree["show"] = "headings"
+        
+        for col in self.data_tree["columns"]:
+            self.data_tree.heading(col, text=col)
+            self.data_tree.column(col, width=100)
+            
+        # Insert data (show first 20 rows)
+        for index, row in self.df.head(20).iterrows():
+            self.data_tree.insert("", "end", values=list(row))
+            
+    def get_model_parameters(self):
+        """Get current model parameters from GUI"""
+        params = []
+        param_names = ['kLitter', 'LTurnoverR', 'BTurnoverR', 'CTurnoverR', 
+                      'StTurnoverR', 'RhTurnoverR', 'RoTurnoverR', 'Rratio_Litter_layer']
+        
+        for name in param_names:
+            params.append(self.param_vars[name].get())
+            
+        return params
     
-    # Start iteration loop
-    while not converged and iteration < max_iterations:
-        # Calculate results for current iteration
+    def get_parameter_bounds(self):
+        """Get parameter bounds from GUI"""
+        bounds = []
+        param_names = ['kLitter', 'LTurnoverR', 'BTurnoverR', 'CTurnoverR', 
+                      'StTurnoverR', 'RhTurnoverR', 'RoTurnoverR', 'Rratio_Litter_layer']
+        
+        for name in param_names:
+            lower, upper = self.bounds_vars[name]
+            bounds.append((lower.get(), upper.get()))
+            
+        return bounds
+    
+    def get_input_sds(self):
+        """Get input standard deviations from GUI"""
+        return {var: self.sd_vars[var].get() for var in self.sd_vars}
+    
+    def calculate_values(self, row, prev_row, params):
+        """Calculate values for each row - same as original function"""
+        kLitter, LTurnoverR, BTurnoverR, CTurnoverR, StTurnoverR, RhTurnoverR, RoTurnoverR, Rratio_Litter_layer = params
+        
+        results = row.to_dict()
+        
+        # Net production calculations
+        results['LNP'] = row['Foliages'] - prev_row['Foliages'] if prev_row is not None else 0
+        results['BNP'] = row['Branches'] - prev_row['Branches'] if prev_row is not None else 0
+        results['CNP'] = row['Culms'] - prev_row['Culms'] if prev_row is not None else 0
+        
+        results['AGC'] = row['Foliages'] + row['Branches'] + row['Culms']
+        
+        results['StNP'] = 0.1955 * results['CNP']
+        results['RhNP'] = 1.1162 * abs(results['LNP'])**0.7279 if results['LNP'] != 0 else 0
+        results['RoNP'] = 0.9847 * results['RhNP']
+        
+        if prev_row is None:
+            results['Stumps'] = row['Stumps']
+            results['Rhizomes'] = row['Rhizomes']
+            results['Roots'] = row['Roots']
+        else:
+            results['Stumps'] = prev_row['Stumps'] + results['StNP']
+            results['Rhizomes'] = prev_row['Rhizomes'] + results['RhNP']
+            results['Roots'] = prev_row['Roots'] + results['RoNP']
+        
+        results['BGC'] = results['Stumps'] + results['Rhizomes'] + results['Roots']
+        results['Root_Shoot_Ratio'] = results['BGC'] / results['AGC'] if results['AGC'] != 0 else 0
+        results['TC'] = results['AGC'] + results['BGC']
+        
+        # Death calculations
+        results['LD'] = prev_row['Foliages'] * LTurnoverR if prev_row is not None else 0
+        results['BD'] = prev_row['Branches'] * BTurnoverR if prev_row is not None else 0
+        results['CD'] = prev_row['Culms'] * CTurnoverR if prev_row is not None else 0
+        
+        HBP = self.hbp_var.get()
+        if HBP == 1:
+            results['Litterfall'] = results['LD'] + results['BD']
+        else:
+            results['Litterfall'] = results['LD'] + results['BD'] + results['CD']
+        
+        results['ANPP'] = results['LNP'] + results['BNP'] + results['CNP'] + results['Litterfall']
+        
+        results['StD'] = prev_row['Stumps'] * StTurnoverR if prev_row is not None else 0
+        results['RhD'] = prev_row['Rhizomes'] * RhTurnoverR if prev_row is not None else 0
+        results['RoD'] = prev_row['Roots'] * RoTurnoverR if prev_row is not None else 0
+        
+        results['Dbelow'] = results['StD'] + results['RhD'] + results['RoD']
+        
+        BNPPmethod = self.bnpp_method_var.get()
+        if BNPPmethod == 1:
+            results['BNPP'] = results['StNP'] + results['RhNP'] + results['RoNP'] + results['Dbelow']
+        else:
+            results['BNPP'] = results['StNP'] + results['RhNP'] + results['RoNP'] + results['Soil_AR']
+        
+        results['TNPP'] = results['ANPP'] + results['BNPP']
+        
+        # Soil HR calculation
+        if results['ANPP'] < 4.17:
+            hr_anpp = 4.17
+        elif results['ANPP'] > 11.8:
+            hr_anpp = 11.8
+        else:
+            hr_anpp = results['ANPP']
+        results['Soil_HR'] = 0.0071 * hr_anpp**3.0772 if results['ANPP'] != 0 else 0
+        
+        # Autotrophic respiration calculations
+        results['Foliages_AR'] = 1.172/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Foliages']/0.4544 * 1000000) /1000/1000/1000 * 12/44.01)
+        results['Branches_AR'] = 0.215/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Branches']/0.4815 * 1000000) /1000/1000/1000 * 12/44.01)
+        results['Culms_AR'] = 0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (row['Culms']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)
+        results['Aboveground_AR'] = results['Foliages_AR'] + results['Branches_AR'] + results['Culms_AR']
+        
+        # Soil AR ratios
+        denominator = ((0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01))+
+                      (0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01))+
+                      (0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)))
+        
+        if denominator != 0:
+            results['Roots_AR_ratio'] = (0.088/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Roots']/0.4487 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
+            results['Rhizomes_AR_ratio'] = (0.179/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Rhizomes']/0.4354 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
+            results['Stumps_AR_ratio'] = (0.085/1.172 * ((1.445 * 10**(-1) * math.exp(7.918*10**(-2)*row['AvgTemp'])) * 365*24 * (results['Stumps']/0.4628 * 1000000) /1000/1000/1000 * 12/44.01)) / denominator
+        else:
+            results['Roots_AR_ratio'] = 0
+            results['Rhizomes_AR_ratio'] = 0
+            results['Stumps_AR_ratio'] = 0
+        
+        results['Soil_AR'] = 0.000006 * results['BGC']**3.3249
+        
+        results['Roots_AR'] = results['Soil_AR'] * results['Roots_AR_ratio']
+        results['Rhizomes_AR'] = results['Soil_AR'] * results['Rhizomes_AR_ratio']
+        results['Stumps_AR'] = results['Soil_AR'] * results['Stumps_AR_ratio']
+        
+        results['AR'] = results['Aboveground_AR'] + results['Soil_AR']
+        results['SR'] = results['Soil_AR'] + results['Soil_HR']
+        results['NEP_with_Aboveground_Detritus_Litter_layer_HR'] = results['TNPP'] - results['Soil_HR'] if results['TNPP'] != 0 else 0
+        
+        # Litter layer calculations
+        results['Litter_layer'] = (prev_row['Litter_layer'] + results['Litterfall']) * kLitter if prev_row is not None else row['Litter_layer']
+        results['DLitter_layer'] = results['Litter_layer'] * kLitter
+        results['Litter_layer_HR'] = results['Litter_layer'] * Rratio_Litter_layer
+        
+        results['HR'] = results['Soil_HR'] + results['Litter_layer_HR']
+        results['NEP'] = results['NEP_with_Aboveground_Detritus_Litter_layer_HR'] - results['Litter_layer_HR'] if results['TNPP'] != 0 else 0
+        
+        # Soil carbon
+        if prev_row is not None:
+            results['SC'] = prev_row['SC'] + results['Dbelow'] - results['Soil_HR'] + results['DLitter_layer']
+        else:
+            results['SC'] = row['SC']
+        
+        results['dSC'] = results['SC'] - prev_row['SC'] if prev_row is not None else 0
+        results['TEC'] = results['TC'] + results['Litter_layer'] + results['SC'] + row['Undergrowth']
+        results['NEP_from_dTEC'] = results['TEC'] - prev_row['TEC'] if prev_row is not None else 0
+        
+        results['GPP'] = results['TNPP'] + results['AR']
+        
+        return results
+    
+    def run_model(self, params, input_df=None):
+        """Run the model with given parameters"""
+        if input_df is None:
+            input_df = self.df
+        
+        if input_df is None:
+            raise ValueError("No input data loaded")
+        
         results = []
         prev_row = None
-
-        for i in range(len(df)):
-            updated_values = calculate_values(df.iloc[i], prev_row, params)
+        
+        for i in range(len(input_df)):
+            updated_values = self.calculate_values(input_df.iloc[i], prev_row, params)
             results.append(updated_values)
             prev_row = updated_values
         
-        current_results = pd.DataFrame(results)
-        
-        # Check for convergence if this is not the first iteration
-        if prev_results is not None:
-            # Calculate RMSE between the current and previous iteration for NEP
-            #rmse = np.sqrt(np.mean((current_results['NEP'] - prev_results['NEP'])**2))
-            rmse = np.sqrt(np.mean((results['NEP_from_dTEC'] - results['NEP'])**2))
-
-            if rmse < tolerance:
-                converged = True
-        
-        # Update prev_results to current_results for the next iteration comparison
-        prev_results = current_results
-        iteration += 1
-
-        print(f"Iteration {iteration}, RMSE: {rmse}")
-
-    if iteration == max_iterations:
-        print("Warning: Maximum iterations reached without full convergence.")
+        return pd.DataFrame(results)
     
-    return current_results
+    def objective_function(self, params):
+        """Objective function for optimization"""
+        try:
+            results = self.run_model(params)
+            if len(results) > 1:
+                rmse = np.sqrt(np.mean((results['NEP_from_dTEC'].iloc[1:] - results['NEP'].iloc[1:])**2))
+                return rmse
+            else:
+                return 1e6
+        except:
+            return 1e6
+    
+    def run_optimization(self):
+        """Run optimization only"""
+        if self.df is None:
+            messagebox.showerror("Error", "Please load input data first")
+            return
+        
+        def optimize():
+            try:
+                self.status_var.set("Running optimization...")
+                self.root.update()
+                
+                initial_params = self.get_model_parameters()
+                bounds = self.get_parameter_bounds()
+                
+                # Define constraints
+                constraints = [
+                    {'type': 'ineq', 'fun': lambda params: params[1] - params[2]},  # LTurnoverR > BTurnoverR
+                    {'type': 'ineq', 'fun': lambda params: params[2] - params[3]},  # BTurnoverR > CTurnoverR
+                    {'type': 'ineq', 'fun': lambda params: params[6] - params[5]}   # RoTurnoverR > RhTurnoverR
+                ]
+                
+                result = minimize(self.objective_function, initial_params, 
+                                method=self.opt_method_var.get(), 
+                                bounds=bounds, constraints=constraints)
+                
+                self.optimized_params = result.x
+                
+                # Run model with optimized parameters
+                self.results = self.run_model(self.optimized_params)
+                
+                # Display results
+                self.display_optimization_results(result)
+                
+                self.status_var.set("Optimization completed successfully")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Optimization failed: {str(e)}")
+                self.status_var.set("Optimization failed")
+        
+        # Run in separate thread to prevent GUI freezing
+        threading.Thread(target=optimize, daemon=True).start()
+    
+    def run_full_analysis(self):
+        """Run full analysis with Monte Carlo simulation"""
+        if self.df is None:
+            messagebox.showerror("Error", "Please load input data first")
+            return
+        
+        def full_analysis():
+            try:
+                self.status_var.set("Running full analysis...")
+                self.root.update()
+                
+                # First run optimization
+                initial_params = self.get_model_parameters()
+                bounds = self.get_parameter_bounds()
+                
+                constraints = [
+                    {'type': 'ineq', 'fun': lambda params: params[1] - params[2]},
+                    {'type': 'ineq', 'fun': lambda params: params[2] - params[3]},
+                    {'type': 'ineq', 'fun': lambda params: params[6] - params[5]}
+                ]
+                
+                self.status_var.set("Running optimization...")
+                self.root.update()
+                
+                result = minimize(self.objective_function, initial_params, 
+                                method=self.opt_method_var.get(), 
+                                bounds=bounds, constraints=constraints)
+                
+                self.optimized_params = result.x
+                
+                # Run Monte Carlo simulation
+                self.status_var.set("Running Monte Carlo simulation...")
+                self.root.update()
+                
+                n_simulations = self.n_simulations_var.get()
+                all_mc_results = self.run_monte_carlo_simulation(self.optimized_params, n_simulations)
+                
+                # Calculate confidence intervals
+                self.status_var.set("Calculating confidence intervals...")
+                self.root.update()
+                
+                confidence_level = self.confidence_level_var.get()
+                ci_results = self.calculate_confidence_intervals(all_mc_results, confidence_level)
+                
+                # Get base results
+                base_results = self.run_model(self.optimized_params)
+                
+                # Create final results with CI
+                self.results = self.create_final_results_with_ci(base_results, ci_results)
+                
+                # Display results
+                self.display_full_analysis_results(result, ci_results)
+                
+                self.status_var.set("Full analysis completed successfully")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Full analysis failed: {str(e)}")
+                self.status_var.set("Full analysis failed")
+        
+        # Run in separate thread
+        threading.Thread(target=full_analysis, daemon=True).start()
+    
+    def generate_perturbed_data(self, original_df, sds):
+        """Generate perturbed input data based on standard deviations"""
+        perturbed_df = original_df.copy()
+        
+        for var in sds.keys():
+            if var in perturbed_df.columns:
+                original_values = perturbed_df[var].values
+                random_perturbations = np.random.normal(0, sds[var], len(original_values))
+                perturbed_values = original_values + random_perturbations
+                perturbed_values = np.maximum(perturbed_values, 0.01)  # Ensure positive values
+                perturbed_df[var] = perturbed_values
+        
+        return perturbed_df
+    
+    def run_monte_carlo_simulation(self, params, n_simulations):
+        """Run Monte Carlo simulation"""
+        input_sds = self.get_input_sds()
+        all_results = []
+        
+        for i in range(n_simulations):
+            if i % 100 == 0:
+                self.status_var.set(f"Monte Carlo simulation: {i+1}/{n_simulations}")
+                self.root.update()
+            
+            try:
+                perturbed_df = self.generate_perturbed_data(self.df, input_sds)
+                result = self.run_model(params, perturbed_df)
+                all_results.append(result)
+            except:
+                continue
+        
+        return all_results
+    
+    def calculate_confidence_intervals(self, all_results, confidence_level=0.95):
+        """Calculate confidence intervals from Monte Carlo results"""
+        if len(all_results) == 0:
+            return None
+        
+        output_columns = [col for col in all_results[0].columns 
+                         if col not in ['t', 'AvgTemp', 'Undergrowth']]
+        
+        ci_results = {}
+        alpha = 1 - confidence_level
+        lower_percentile = (alpha/2) * 100
+        upper_percentile = (1 - alpha/2) * 100
+        
+        for col in output_columns:
+            col_values = []
+            for result in all_results:
+                if col in result.columns:
+                    col_values.append(result[col].values)
+            
+            if col_values:
+                col_array = np.array(col_values)
+                mean_values = np.mean(col_array, axis=0)
+                std_values = np.std(col_array, axis=0)
+                lower_ci = np.percentile(col_array, lower_percentile, axis=0)
+                upper_ci = np.percentile(col_array, upper_percentile, axis=0)
+                
+                ci_results[col] = {
+                    'mean': mean_values,
+                    'std': std_values,
+                    'lower_ci': lower_ci,
+                    'upper_ci': upper_ci
+                }
+        
+        return ci_results
+    
+    def create_final_results_with_ci(self, base_results, ci_results):
+        """Create final results DataFrame with confidence intervals"""
+        final_results = base_results.copy()
+        
+        if ci_results:
+            for col in ci_results.keys():
+                if col in final_results.columns:
+                    final_results[f'{col}_mean'] = ci_results[col]['mean']
+                    final_results[f'{col}_std'] = ci_results[col]['std']
+                    final_results[f'{col}_lower_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['lower_ci']
+                    final_results[f'{col}_upper_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['upper_ci']
+        
+        return final_results
+    
+    def display_optimization_results(self, optimization_result):
+        """Display optimization results"""
+        self.results_text.delete(1.0, tk.END)
+        
+        param_names = ['kLitter', 'LTurnoverR', 'BTurnoverR', 'CTurnoverR', 
+                      'StTurnoverR', 'RhTurnoverR', 'RoTurnoverR', 'Rratio_Litter_layer']
+        
+        results_text = "PEMCAFE Model Optimization Results\n"
+        results_text += "=" * 50 + "\n\n"
+        
+        results_text += f"Optimization Status: {'Success' if optimization_result.success else 'Failed'}\n"
+        results_text += f"Optimization Method: {self.opt_method_var.get()}\n"
+        results_text += f"Final Objective Value: {optimization_result.fun:.6f}\n"
+        results_text += f"Number of Iterations: {optimization_result.nit if hasattr(optimization_result, 'nit') else 'N/A'}\n\n"
+        
+        results_text += "Optimized Parameters:\n"
+        results_text += "-" * 30 + "\n"
+        for i, (name, value) in enumerate(zip(param_names, self.optimized_params)):
+            results_text += f"{name:20}: {value:.6f}\n"
+        
+        if self.results is not None:
+            results_text += "\n\nModel Results Summary:\n"
+            results_text += "-" * 30 + "\n"
+            
+            key_vars = ['ANPP', 'BNPP', 'TNPP', 'NEP', 'GPP', 'AGC', 'BGC', 'TC']
+            for var in key_vars:
+                if var in self.results.columns:
+                    mean_val = self.results[var].mean()
+                    std_val = self.results[var].std()
+                    results_text += f"{var:10}: Mean = {mean_val:8.3f}, Std = {std_val:8.3f}\n"
+        
+        self.results_text.insert(tk.END, results_text)
+        
+        # Switch to results tab
+        self.notebook.select(4)
+    
+    def display_full_analysis_results(self, optimization_result, ci_results):
+        """Display full analysis results with confidence intervals"""
+        self.results_text.delete(1.0, tk.END)
+        
+        param_names = ['kLitter', 'LTurnoverR', 'BTurnoverR', 'CTurnoverR', 
+                      'StTurnoverR', 'RhTurnoverR', 'RoTurnoverR', 'Rratio_Litter_layer']
+        
+        results_text = "PEMCAFE Model Full Analysis Results\n"
+        results_text += "=" * 60 + "\n\n"
+        
+        # Optimization results
+        results_text += "OPTIMIZATION RESULTS:\n"
+        results_text += f"Status: {'Success' if optimization_result.success else 'Failed'}\n"
+        results_text += f"Method: {self.opt_method_var.get()}\n"
+        results_text += f"Final Objective Value: {optimization_result.fun:.6f}\n\n"
+        
+        results_text += "Optimized Parameters:\n"
+        for i, (name, value) in enumerate(zip(param_names, self.optimized_params)):
+            results_text += f"  {name:20}: {value:.6f}\n"
+        
+        # Monte Carlo results
+        results_text += f"\n\nMONTE CARLO SIMULATION RESULTS:\n"
+        results_text += f"Number of Simulations: {self.n_simulations_var.get()}\n"
+        results_text += f"Confidence Level: {self.confidence_level_var.get()*100:.0f}%\n\n"
+        
+        if ci_results:
+            results_text += f"Summary of {self.confidence_level_var.get()*100:.0f}% Confidence Intervals for Key Variables:\n"
+            results_text += "-" * 60 + "\n"
+            
+            key_vars = ['ANPP', 'BNPP', 'TNPP', 'NEP', 'GPP']
+            for var in key_vars:
+                if var in ci_results:
+                    mean_val = np.mean(ci_results[var]['mean'])
+                    mean_lower = np.mean(ci_results[var]['lower_ci'])
+                    mean_upper = np.mean(ci_results[var]['upper_ci'])
+                    results_text += f"{var:8}: {mean_val:8.3f} (CI: {mean_lower:8.3f} - {mean_upper:8.3f})\n"
+        
+        # Model settings summary
+        results_text += f"\n\nMODEL SETTINGS:\n"
+        results_text += f"Harvesting Bamboo Products (HBP): {self.hbp_var.get()}\n"
+        results_text += f"BNPP Method: {'BGC + Dbelow' if self.bnpp_method_var.get() == 1 else 'BGC + Soil_AR'}\n"
+        
+        results_text += f"\n\nInput Data Summary:\n"
+        results_text += f"Number of time points: {len(self.df) if self.df is not None else 'N/A'}\n"
+        if self.df is not None:
+            results_text += f"Data columns: {', '.join(self.df.columns.tolist())}\n"
+        
+        self.results_text.insert(tk.END, results_text)
+        
+        # Switch to results tab
+        self.notebook.select(4)
+    
+    def export_results(self):
+        """Export results to CSV file"""
+        if self.results is None:
+            messagebox.showwarning("Warning", "No results to export. Please run the model first.")
+            return
+        
+        try:
+            filename = filedialog.asksaveasfilename(
+                title="Save Results",
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            )
+            
+            if filename:
+                self.results.to_csv(filename, index=False)
+                messagebox.showinfo("Success", f"Results exported to {filename}")
+                self.status_var.set(f"Results exported to {os.path.basename(filename)}")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export results: {str(e)}")
 
+def main():
+    root = tk.Tk()
+    app = PEMCAFEModelGUI(root)
+    root.mainloop()
 
-# Step 1: Optimise the parameters using the initial run
-result = minimize(objective_function, initial_params, method='Nelder-Mead')
-
-# Step 2: Get the optimised parameters
-optimised_params = result.x
-print("Optimised parameters:", optimised_params)
-
-# Step 3: Run the model with the optimised parameters to get final results
-final_results = run_model(optimised_params)
-
-# Step 4: Save the results
-final_results.to_csv(r"Z:\RF for bamboo\Task C1\optimised_outputresultsforPEMCAFE.csv", index=False)
-print("Optimisation complete. Results saved to 'optimised_outputresultsforPEMCAFE.csv'.")
+if __name__ == "__main__":
+    main()
