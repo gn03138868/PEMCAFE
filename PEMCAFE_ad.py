@@ -694,53 +694,144 @@ class PEMCAFEModelGUI:
         """Calculate confidence intervals from Monte Carlo results"""
         if len(all_results) == 0:
             return None
+        
         # 清理結果 - 替換NaN為0
         for result in all_results:
             result.fillna(0, inplace=True)
-            
+        
         output_columns = [col for col in all_results[0].columns 
                          if col not in ['t', 'AvgTemp', 'Undergrowth']]
-        
+    
         ci_results = {}
         alpha = 1 - confidence_level
-        lower_percentile = (alpha/2) * 100
-        upper_percentile = (1 - alpha/2) * 100
-        
+    
         for col in output_columns:
             col_values = []
             for result in all_results:
                 if col in result.columns:
                     col_values.append(result[col].values)
-            
+        
             if col_values:
                 col_array = np.array(col_values)
+            
+                # 方法1：使用t分布置信區間（推薦）
                 mean_values = np.mean(col_array, axis=0)
-                std_values = np.std(col_array, axis=0)
-                lower_ci = np.percentile(col_array, lower_percentile, axis=0)
-                upper_ci = np.percentile(col_array, upper_percentile, axis=0)
-                
+                std_values = np.std(col_array, axis=0, ddof=1)  # 使用樣本標準差
+                n = len(col_values)
+            
+                # 使用t分布計算置信區間
+                t_value = stats.t.ppf(1 - alpha/2, df=n-1)
+                margin_of_error = t_value * std_values / np.sqrt(n)
+            
+                lower_ci = mean_values - margin_of_error
+                upper_ci = mean_values + margin_of_error
+            
+                # 方法2：百分位數方法（作為備選）
+                lower_percentile = (alpha/2) * 100
+                upper_percentile = (1 - alpha/2) * 100
+                percentile_lower = np.percentile(col_array, lower_percentile, axis=0)
+                percentile_upper = np.percentile(col_array, upper_percentile, axis=0)
+            
                 ci_results[col] = {
                     'mean': mean_values,
                     'std': std_values,
                     'lower_ci': lower_ci,
-                    'upper_ci': upper_ci
+                    'upper_ci': upper_ci,
+                    'percentile_lower': percentile_lower,
+                    'percentile_upper': percentile_upper,
+                    'n_simulations': n
                 }
         
         return ci_results
+
+    def display_full_analysis_results(self, optimisation_result, ci_results):
+        """Display full analysis results with confidence intervals"""
+        self.results_text.delete(1.0, tk.END)
+    
+        param_names = ['kLitter', 'LTurnoverR', 'BTurnoverR', 'CTurnoverR', 
+                      'StTurnoverR', 'RhTurnoverR', 'RoTurnoverR', 'Rratio_Litter_layer']
+    
+        results_text = "PEMCAFE Model Full Analysis Results\n"
+        results_text += "=" * 60 + "\n\n"
+    
+        # Optimisation results
+        results_text += "OPTIMISATION RESULTS:\n"
+        results_text += f"Status: {'Success' if optimisation_result.success else 'Failed'}\n"
+        results_text += f"Method: {self.opt_method_var.get()}\n"
+        results_text += f"Final Objective Value: {optimisation_result.fun:.6f}\n\n"
+    
+        results_text += "Optimised Parameters:\n"
+        for i, (name, value) in enumerate(zip(param_names, self.optimized_params)):
+            results_text += f"  {name:20}: {value:.6f}\n"
+    
+        # Monte Carlo results
+        results_text += f"\n\nMONTE CARLO SIMULATION RESULTS:\n"
+        results_text += f"Number of Simulations: {self.n_simulations_var.get()}\n"
+        results_text += f"Confidence Level: {self.confidence_level_var.get()*100:.0f}%\n\n"
+    
+        if ci_results:
+            results_text += f"Summary of {self.confidence_level_var.get()*100:.0f}% Confidence Intervals for Key Variables:\n"
+            results_text += "Method: Mean ± t * SE (t-distribution based)\n"
+            results_text += "-" * 80 + "\n"
+            results_text += f"{'Variable':<12} {'Mean':<12} {'Std':<12} {'95% CI Lower':<15} {'95% CI Upper':<15}\n"
+            results_text += "-" * 80 + "\n"
+        
+            key_vars = ['ANPP', 'BNPP', 'TNPP', 'NEP', 'GPP', 'SR', 'AGC', 'BGC']
+            for var in key_vars:
+                if var in ci_results:
+                    mean_val = np.mean(ci_results[var]['mean'])
+                    std_val = np.mean(ci_results[var]['std'])
+                    mean_lower = np.mean(ci_results[var]['lower_ci'])
+                    mean_upper = np.mean(ci_results[var]['upper_ci'])
+                
+                    results_text += f"{var:<12} {mean_val:<12.3f} {std_val:<12.3f} {mean_lower:<15.3f} {mean_upper:<15.3f}\n"
+        
+            # 添加百分位數方法的結果作為比較
+            results_text += f"\n\nComparison with Percentile Method:\n"
+            results_text += "-" * 80 + "\n"
+            results_text += f"{'Variable':<12} {'Mean':<12} {'Percentile Lower':<18} {'Percentile Upper':<18}\n"
+            results_text += "-" * 80 + "\n"
+        
+            for var in key_vars:
+                if var in ci_results:
+                    mean_val = np.mean(ci_results[var]['mean'])
+                    perc_lower = np.mean(ci_results[var]['percentile_lower'])
+                    perc_upper = np.mean(ci_results[var]['percentile_upper'])
+                
+                    results_text += f"{var:<12} {mean_val:<12.3f} {perc_lower:<18.3f} {perc_upper:<18.3f}\n"
+    
+        # Model settings summary
+        results_text += f"\n\nMODEL SETTINGS:\n"
+        results_text += f"Harvesting Bamboo Products (HBP): {self.hbp_var.get()}\n"
+        results_text += f"BNPP Method: {'BGC + Dbelow' if self.bnpp_method_var.get() == 1 else 'BGC + Soil_AR'}\n"
+    
+        results_text += f"\n\nInput Data Summary:\n"
+        results_text += f"Number of time points: {len(self.df) if self.df is not None else 'N/A'}\n"
+        if self.df is not None:
+            results_text += f"Data columns: {', '.join(self.df.columns.tolist())}\n"
+    
+        self.results_text.insert(tk.END, results_text)
+    
+        # Switch to results tab
+        self.notebook.select(4)
     
     def create_final_results_with_ci(self, base_results, ci_results):
         """Create final results DataFrame with confidence intervals"""
         final_results = base_results.copy()
-        
+    
         if ci_results:
             for col in ci_results.keys():
                 if col in final_results.columns:
-                    final_results[f'{col}_mean'] = ci_results[col]['mean']
-                    final_results[f'{col}_std'] = ci_results[col]['std']
-                    final_results[f'{col}_lower_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['lower_ci']
-                    final_results[f'{col}_upper_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['upper_ci']
-        
+                    final_results[f'{col}_MC_mean'] = ci_results[col]['mean']
+                    final_results[f'{col}_MC_std'] = ci_results[col]['std']
+                    final_results[f'{col}_t_lower_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['lower_ci']
+                    final_results[f'{col}_t_upper_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['upper_ci']
+                    final_results[f'{col}_percentile_lower_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['percentile_lower']
+                    final_results[f'{col}_percentile_upper_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['percentile_upper']
+    
         return final_results
+    
+
     
     def display_optimisation_results(self, optimisation_result):
         """Display optimisation results"""
