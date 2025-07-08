@@ -1,4 +1,4 @@
-# PEMCAFE (ver. 0.95 02 July 2025 stable) with 95% CI estimation via sd from AGC
+# PEMCAFE (ver. 0.96 07 July 2025 stable) with 95% CI estimation via sd from AGC
 # ANPP = delta AGC + litterfall 
 # but BNPP have different methods 
 # 1. delta BGC + Dbelow
@@ -6,6 +6,7 @@
 
 # combined single time version with Monte Carlo simulation for CI estimation
 # user interface built
+# t=0, flux of C need to be 0
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -20,7 +21,7 @@ import os
 class PEMCAFEModelGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("PEMCAFE Model Controller (ver. 0.92)")
+        self.root.title("PEMCAFE Model Controller (ver. 0.96)")
         self.root.geometry("1200x800")
         
         # Initialize variables
@@ -498,8 +499,13 @@ class PEMCAFEModelGUI:
         results['NEP_from_dTEC'] = results['TEC'] - prev_row['TEC'] if prev_row is not None else 0
         
         results['GPP'] = results['TNPP'] + results['AR']
+
+
+        # 檢查是否為初始 t0
+        is_initial = (prev_row is None)
         
         return results
+    
     
     def run_model(self, params, input_df=None):
         """Run the model with given parameters"""
@@ -817,8 +823,44 @@ class PEMCAFEModelGUI:
     
     def create_final_results_with_ci(self, base_results, ci_results):
         """Create final results DataFrame with confidence intervals"""
+        
         final_results = base_results.copy()
+        
+
+        is_initial = (base_results['t'] == base_results['t'].min())
     
+        # t0 flux need to be 0
+        flux_vars = [
+            'LNP', 'BNP', 'CNP', 'StNP', 'RhNP', 'RoNP',
+            'ANPP', 'BNPP', 'TNPP', 'LD', 'BD', 'CD',
+            'Litterfall', 'StD', 'RhD', 'RoD', 'Dbelow',
+            'NEP', 'NEP_with_Aboveground_Detritus_Litter_layer_HR',
+            'NEP_from_dTEC', 'dSC', 'DLitter_layer', 'GPP',
+            'SR', 'Litter_layer_HR', 'Soil_HR', 'HR',
+            'Foliages_AR', 'Branches_AR', 'Culms_AR', 'Aboveground_AR',
+            'Soil_AR', 'AR', 'Roots_AR', 'Rhizomes_AR', 'Stumps_AR',
+            'Roots_AR_ratio', 'Rhizomes_AR_ratio', 'Stumps_AR_ratio'
+        ]
+    
+        # t0 flux must be 0
+        for var in flux_vars:
+            if var in final_results.columns:
+                final_results.loc[is_initial, var] = 0.0
+        
+        # t0 CI also must be 0
+        suffixes = [
+            '_MC_mean', '_MC_std', '_t_lower_95CI',
+            '_t_upper_95CI', '_percentile_lower_95CI',
+            '_percentile_upper_95CI'
+        ]
+    
+        for var in flux_vars:
+            for suffix in suffixes:
+                col_name = f"{var}{suffix}"
+                if col_name in final_results.columns:
+                    final_results.loc[is_initial, col_name] = 0.0
+    
+        # add CI
         if ci_results:
             for col in ci_results.keys():
                 if col in final_results.columns:
@@ -828,8 +870,11 @@ class PEMCAFEModelGUI:
                     final_results[f'{col}_t_upper_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['upper_ci']
                     final_results[f'{col}_percentile_lower_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['percentile_lower']
                     final_results[f'{col}_percentile_upper_{int(self.confidence_level_var.get()*100)}CI'] = ci_results[col]['percentile_upper']
-    
-        return final_results
+        for col in final_results.columns:
+            for flux_var in flux_vars:
+                if col.startswith(flux_var) and col.endswith(tuple(suffixes)):
+                    final_results.loc[is_initial, col] = 0.0
+        return final_results    
     
 
     
