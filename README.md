@@ -208,6 +208,6 @@ Output will be saved to the specified CSV file with calculated values for:
 For technical support or questions:
 1. Check documentation
 2. Review error messages
-3. Contact Shitephen (gn03138868＠gmail.com)
+3. Contact Shitephen (gn03138868＠gmail.com; shitephenwang@ntu.edu.tw)
 
 ---
